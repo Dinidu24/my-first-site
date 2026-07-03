@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My First Website</title>
+
+  <style>
+    /* ---- Basic reset: removes default browser spacing ---- */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background-color: #101820;
+      color: #EAEAEA;
+      line-height: 1.6;
+    }
+
+    /* ---- Top banner ---- */
+    header {
+      background: linear-gradient(120deg, #142a3d, #1c3d5a);
+      padding: 60px 20px;
+      text-align: center;
+      border-bottom: 4px solid #4CC9A0;
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+    }
+
+    header p {
+      font-size: 1.1rem;
+      color: #A9C4D1;
+    }
+
+    /* ---- Main content area ---- */
+    main {
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    section {
+      margin-bottom: 40px;
+    }
+
+    h2 {
+      color: #4CC9A0;
+      margin-bottom: 12px;
+      border-left: 4px solid #4CC9A0;
+      padding-left: 10px;
+    }
+
+    .card {
+      background-color: #17232E;
+      padding: 20px;
+      border-radius: 8px;
+    }
+
+    ul {
+      list-style: none;
+    }
+
+    ul li::before {
+      content: "▹ ";
+      color: #4CC9A0;
+    }
+
+    button {
+      background-color: #4CC9A0;
+      color: #101820;
+      border: none;
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #3aa886;
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      color: #6C8494;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ==== HEADER: the top banner everyone sees first ==== -->
+  <header>
+    <h1>Hi, I'm [Your Name]</h1>
+    <p>Computer Systems & Network Engineering student · Badminton player</p>
+  </header>
+
+  <!-- ==== MAIN: the actual page content ==== -->
+  <main>
+
+    <section>
+      <h2>About Me</h2>
+      <div class="card">
+        <p>This is my very first website! I'm learning how HTML builds
+        structure, CSS makes it look good, and JavaScript makes it interactive.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Things I'm Working On</h2>
+      <div class="card">
+        <ul>
+          <li>A group research project on smart healthcare IoT data</li>
+          <li>Improving my badminton smash technique</li>
+          <li>Building this website!</li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
+      <h2>Say Hi</h2>
+      <div class="card">
+        <p>Click the button below and check your browser console (or just watch this page).</p>
+        <br>
+        <button onclick="sayHello()">Click Me</button>
+        <p id="message" style="margin-top: 15px;"></p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    Made with HTML, CSS & a bit of curiosity.
+  </footer>
+
+  <!-- ==== JAVASCRIPT: makes the page interactive ==== -->
+  <script>
+    function sayHello() {
+      document.getElementById("message").innerText =
+        "Hello! This text just changed using JavaScript. 🎉";
+    }
+  </script>
+
+</body>
+</html>
