@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Live DSCP Priority Marking Demo — Component 1</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    background: #f7f7f5;
+    color: #1a1a1a;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 14px; margin-bottom: 1.5rem; }
+  .controls { display: flex; align-items: center; gap: 10px; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  button {
+    background: #fff; border: 1px solid #ccc; border-radius: 6px;
+    padding: 8px 14px; font-size: 14px; cursor: pointer; color: #1a1a1a;
+  }
+  button:hover { background: #f0f0f0; }
+  button:active { transform: scale(0.98); }
+  .speed-wrap { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 13px; color: #555; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 1.25rem; }
+  .stat-card { border-radius: 8px; padding: 1rem; }
+  .stat-card p:first-child { font-size: 13px; margin: 0 0 4px; }
+  .stat-card p:last-child { font-size: 24px; font-weight: 600; margin: 0; }
+  .stat-total { background: #eee; }
+  .stat-total p { color: #333; }
+  .stat-46 { background: #fbe4e4; }
+  .stat-46 p { color: #a32d2d; }
+  .stat-34 { background: #fbedd6; }
+  .stat-34 p { color: #854f0b; }
+  .stat-26 { background: #e9f2dc; }
+  .stat-26 p { color: #3b6d11; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+  th, td { padding: 7px 6px; text-align: left; }
+  th { color: #666; font-weight: 600; border-bottom: 1px solid #ccc; font-size: 12px; text-transform: uppercase; letter-spacing: 0.02em; }
+  tr { border-bottom: 1px solid #eee; }
+  .num { text-align: right; }
+  .badge { font-size: 12px; padding: 3px 9px; border-radius: 6px; font-weight: 600; }
+  .badge-red { background: #fbe4e4; color: #a32d2d; }
+  .badge-amber { background: #fbedd6; color: #854f0b; }
+  .badge-green { background: #e9f2dc; color: #3b6d11; }
+  .note { font-size: 12px; color: #888; margin-top: 0.75rem; }
+  input[type=range] { width: 110px; }
+</style>
+</head>
+<body>
+
+<h1>Live DSCP priority marking demo</h1>
+<p class="subtitle">Component 1 — Adaptive Context-Aware Priority Marking for Medical Data (Group ID: J26-CSNE-310)</p>
+
+<div class="controls">
+  <button id="playBtn">⏸ Pause</button>
+  <button id="arrestBtn">⚠ Simulate cardiac arrest</button>
+  <div class="speed-wrap">
+    <label>Speed</label>
+    <input type="range" id="speed" min="1" max="3" value="2" step="1">
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat-card stat-total"><p>Records processed</p><p id="statTotal">0</p></div>
+  <div class="stat-card stat-46"><p>DSCP 46 (EF)</p><p id="stat46">0</p></div>
+  <div class="stat-card stat-34"><p>DSCP 34 (AF41)</p><p id="stat34">0</p></div>
+  <div class="stat-card stat-26"><p>DSCP 26 (AF31)</p><p id="stat26">0</p></div>
+</div>
+
+<table>
+  <colgroup>
+    <col style="width:13%"><col style="width:14%"><col style="width:14%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:11%"><col style="width:12%">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>Patient</th><th>Device</th><th>Acuity</th>
+      <th class="num">HR</th><th class="num">SpO2</th><th class="num">Temp</th><th class="num">BP</th>
+      <th>Level</th><th>DSCP</th>
+    </tr>
+  </thead>
+  <tbody id="feedBody"></tbody>
+</table>
+
+<p class="note">Simulated stream running the same threshold and decision logic as patient_data_simulator.py and train_classifier.py. Not connected to real patient data. Click "Simulate cardiac arrest" to see the ICU / life-critical device patient escalate to DSCP 46 in real time.</p>
+
+<script>
+(function(){
+  var VITAL_RANGES = {
+    heart_rate: { Normal:[[60,100]], Warning:[[50,59],[101,130]], Critical:[[40,49],[131,150]], Emergency:[[20,39],[151,200]] },
+    spo2: { Normal:[[95,100]], Warning:[[90,94]], Critical:[[85,89]], Emergency:[[50,84]] },
+    temperature: { Normal:[[36.5,38.0]], Warning:[[36.0,36.4],[38.1,39.0]], Critical:[[35.0,35.9],[39.1,40.0]], Emergency:[[32.0,34.9],[40.1,42.0]] },
+    bp_systolic: { Normal:[[90,140]], Warning:[[80,89],[141,159]], Critical:[[70,79],[160,179]], Emergency:[[40,69],[180,220]] }
+  };
+  var LEVELS = ["Normal","Warning","Critical","Emergency"];
+  var URGENCY = {Emergency:"Critical", Critical:"Deteriorating", Warning:"Monitoring Closely", Normal:"Stable"};
+  var DSCP_BADGE = {46:"badge-red", 34:"badge-amber", 26:"badge-green"};
+
+  function classifyVital(vital, value){
+    var ranges = VITAL_RANGES[vital];
+    for (var li=3; li>=0; li--){
+      var lvl = LEVELS[li];
+      var bands = ranges[lvl];
+      for (var b=0;b<bands.length;b++){
+        if (value >= bands[b][0] && value <= bands[b][1]) return lvl;
+      }
+    }
+    return "Emergency";
+  }
+
+  function computeDscp(vitalsLevel, acuity, device){
+    var criticalAcuity = (acuity === "ICU" || acuity === "HDU");
+    var lifeCritical = device === "Life-Critical";
+    var dscp;
+    if (vitalsLevel === "Emergency") dscp = 46;
+    else if (vitalsLevel === "Critical") dscp = (criticalAcuity && lifeCritical) ? 46 : 34;
+    else if (vitalsLevel === "Warning") dscp = (criticalAcuity && lifeCritical) ? 34 : 26;
+    else dscp = 26;
+    if (device === "Life-Critical" && dscp === 26) dscp = 34;
+    else if (device === "Routine" && dscp === 34) dscp = 26;
+    return dscp;
+  }
+
+  function clamp(v,lo,hi){ return Math.max(lo, Math.min(hi, v)); }
+
+  var patients = [
+    { id:"P-101", acuity:"ICU", device:"Life-Critical", hr:78, spo2:97, temp:37.0, bp:118, arrestTicks:0 },
+    { id:"P-102", acuity:"HDU", device:"Monitoring", hr:88, spo2:95, temp:37.4, bp:126, arrestTicks:0 },
+    { id:"P-103", acuity:"General Ward", device:"Monitoring", hr:82, spo2:96, temp:37.1, bp:122, arrestTicks:0 },
+    { id:"P-104", acuity:"Outpatient", device:"Routine", hr:74, spo2:98, temp:36.8, bp:116, arrestTicks:0 }
+  ];
+
+  var stats = {total:0, d46:0, d34:0, d26:0};
+  var running = true;
+  var timer = null;
+  var speedMs = {1:2200, 2:1300, 3:600};
+
+  function randomWalk(val, step, lo, hi){
+    return clamp(val + (Math.random()*2-1)*step, lo, hi);
+  }
+
+  function tick(){
+    var idx = Math.floor(Math.random()*patients.length);
+    var p = patients[idx];
+
+    if (p.arrestTicks > 0){
+      p.hr = 30 + Math.random()*8;
+      p.spo2 = 78 + Math.random()*5;
+      p.temp = randomWalk(p.temp, 0.3, 35, 40);
+      p.bp = 60 + Math.random()*10;
+      p.arrestTicks -= 1;
+    } else {
+      p.hr = randomWalk(p.hr, 4, 55, 105);
+      p.spo2 = randomWalk(p.spo2, 1.2, 92, 100);
+      p.temp = randomWalk(p.temp, 0.15, 36.2, 38.0);
+      p.bp = randomWalk(p.bp, 4, 95, 135);
+    }
+
+    var hr = Math.round(p.hr), spo2 = Math.round(p.spo2), temp = Math.round(p.temp*10)/10, bp = Math.round(p.bp);
+
+    var levels = [
+      classifyVital("heart_rate", hr),
+      classifyVital("spo2", spo2),
+      classifyVital("temperature", temp),
+      classifyVital("bp_systolic", bp)
+    ];
+    var overallIdx = Math.max.apply(null, levels.map(function(l){return LEVELS.indexOf(l);}));
+    var vitalsLevel = LEVELS[overallIdx];
+    var dscp = computeDscp(vitalsLevel, p.acuity, p.device);
+
+    stats.total++;
+    if (dscp===46) stats.d46++; else if (dscp===34) stats.d34++; else stats.d26++;
+    document.getElementById("statTotal").textContent = stats.total;
+    document.getElementById("stat46").textContent = stats.d46;
+    document.getElementById("stat34").textContent = stats.d34;
+    document.getElementById("stat26").textContent = stats.d26;
+
+    var tbody = document.getElementById("feedBody");
+    var row = document.createElement("tr");
+    var badgeClass = DSCP_BADGE[dscp];
+    row.innerHTML =
+      '<td style="font-weight:600;">'+p.id+'</td>'+
+      '<td style="color:#666;">'+p.device+'</td>'+
+      '<td style="color:#666;">'+p.acuity+'</td>'+
+      '<td class="num">'+hr+'</td>'+
+      '<td class="num">'+spo2+'</td>'+
+      '<td class="num">'+temp+'</td>'+
+      '<td class="num">'+bp+'</td>'+
+      '<td>'+vitalsLevel+'</td>'+
+      '<td><span class="badge '+badgeClass+'">'+dscp+'</span></td>';
+    tbody.insertBefore(row, tbody.firstChild);
+    while (tbody.children.length > 8) tbody.removeChild(tbody.lastChild);
+  }
+
+  function schedule(){
+    var speed = document.getElementById("speed").value;
+    timer = setTimeout(function(){
+      if (running){ tick(); }
+      schedule();
+    }, speedMs[speed]);
+  }
+
+  document.getElementById("playBtn").addEventListener("click", function(){
+    running = !running;
+    this.textContent = running ? "⏸ Pause" : "▶ Resume";
+  });
+
+  document.getElementById("arrestBtn").addEventListener("click", function(){
+    patients[0].arrestTicks = 5;
+  });
+
+  for (var i=0;i<5;i++){ tick(); }
+  schedule();
+})();
+</script>
+</body>
+</html>
